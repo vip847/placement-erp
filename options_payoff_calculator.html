@@ -1,0 +1,1398 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Options Payoff Calculator & Visualizer</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Vue.js 3 CDN -->
+  <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #090d16;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #334155;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #475569;
+    }
+    .custom-ring {
+      box-shadow: 0 0 15px rgba(99, 102, 241, 0.15);
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 font-sans antialiased min-h-screen selection:bg-indigo-500 selection:text-white">
+
+  <div id="app" class="max-w-[1650px] mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+
+    <!-- Header & App Title -->
+    <header class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-6 border-b border-slate-800/80">
+      <div class="flex items-center space-x-3.5">
+        <div class="w-11 h-11 rounded-xl bg-gradient-to-tr from-indigo-600 via-blue-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-xl sm:text-2xl font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-slate-100 to-slate-400">
+            Options Payoff Hub
+          </h1>
+          <p class="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
+            <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            Exact Strike & BEP Point Analysis • Dynamic Price Spectrum
+          </p>
+        </div>
+      </div>
+
+      <!-- Controls & View Mode Toggles Bar -->
+      <div class="flex flex-wrap items-center gap-3">
+        <!-- Currency Selector -->
+        <div class="flex items-center bg-slate-900 border border-slate-800 rounded-lg px-2 py-1">
+          <span class="text-xs text-slate-400 font-medium mr-1.5">Currency:</span>
+          <select v-model="currency" class="bg-slate-800 text-xs font-semibold rounded px-2 py-1 text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500">
+            <option value="$">$ (USD)</option>
+            <option value="₹">₹ (INR)</option>
+            <option value="€">€ (EUR)</option>
+            <option value="£">£ (GBP)</option>
+          </select>
+        </div>
+
+        <!-- View Mode (Per Share / Per Lot / Total Position) -->
+        <div class="flex items-center bg-slate-900 border border-slate-800 rounded-lg p-1">
+          <button 
+            @click="viewMode = 'share'" 
+            :class="viewMode === 'share' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
+            class="px-2.5 py-1 text-xs font-bold rounded transition-all">
+            Per Share
+          </button>
+          <button 
+            @click="viewMode = 'lot'" 
+            :class="viewMode === 'lot' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
+            class="px-2.5 py-1 text-xs font-bold rounded transition-all">
+            Per Lot (x{{ lotSize }})
+          </button>
+          <button 
+            @click="viewMode = 'total'" 
+            :class="viewMode === 'total' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
+            class="px-2.5 py-1 text-xs font-bold rounded transition-all">
+            Total ({{ numLots }} Lot{{ numLots > 1 ? 's' : '' }})
+          </button>
+        </div>
+
+        <!-- Format Toggle (Accounting vs Minus) -->
+        <button 
+          @click="accountingFormat = accountingFormat === 'parens' ? 'minus' : 'parens'"
+          class="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg text-xs font-mono text-slate-300 transition-colors"
+          :title="accountingFormat === 'parens' ? 'Accounting Format: (20.00)' : 'Standard Format: -20.00'">
+          Format: <span class="text-indigo-400 font-bold">{{ accountingFormat === 'parens' ? '(20)' : '-20' }}</span>
+        </button>
+
+        <!-- Reset Button -->
+        <button 
+          @click="resetToDefault" 
+          class="flex items-center gap-1 px-3 py-1.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 rounded-lg text-xs font-semibold text-slate-300 transition-colors">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+          Reset
+        </button>
+      </div>
+    </header>
+
+    <!-- Key Metrics Summary Cards -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      
+      <!-- Max Profit Card -->
+      <div class="bg-slate-900/80 border border-slate-800/80 rounded-xl p-4 relative overflow-hidden backdrop-blur-sm">
+        <div class="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">
+          <span>Max Profit</span>
+          <span class="text-[10px] bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20 uppercase font-mono">
+            {{ viewModeText }}
+          </span>
+        </div>
+        <div class="text-2xl font-black font-mono tracking-tight" :class="maxProfitAndLoss.maxProfit === 'Unlimited' ? 'text-emerald-400' : (maxProfitAndLoss.maxProfitVal > 0 ? 'text-emerald-400' : 'text-slate-300')">
+          {{ formatMetricValue(maxProfitAndLoss.maxProfit) }}
+        </div>
+        <div class="text-[11px] text-slate-400 mt-1">
+          Maximum potential upside
+        </div>
+      </div>
+
+      <!-- Max Loss Card -->
+      <div class="bg-slate-900/80 border border-slate-800/80 rounded-xl p-4 relative overflow-hidden backdrop-blur-sm">
+        <div class="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">
+          <span>Max Loss</span>
+          <span class="text-[10px] bg-rose-500/10 text-rose-400 px-1.5 py-0.5 rounded border border-rose-500/20 uppercase font-mono">
+            {{ viewModeText }}
+          </span>
+        </div>
+        <div class="text-2xl font-black font-mono tracking-tight" :class="maxProfitAndLoss.maxLoss === 'Unlimited' ? 'text-rose-400' : (maxProfitAndLoss.maxLossVal < 0 ? 'text-rose-400' : 'text-slate-300')">
+          {{ formatMetricValue(maxProfitAndLoss.maxLoss) }}
+        </div>
+        <div class="text-[11px] text-slate-400 mt-1">
+          Capital at risk
+        </div>
+      </div>
+
+      <!-- Break-Even Points (BEP) Card -->
+      <div class="bg-slate-900/80 border border-slate-800/80 rounded-xl p-4 relative overflow-hidden backdrop-blur-sm">
+        <div class="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">
+          <span>Break-Even (BEP)</span>
+          <span class="text-[10px] bg-cyan-500/10 text-cyan-400 px-1.5 py-0.5 rounded border border-cyan-500/20">AT EXPIRY</span>
+        </div>
+        <div class="text-lg font-bold font-mono tracking-tight text-cyan-400 truncate">
+          <template v-if="beps.length > 0">
+            <span v-for="(b, idx) in beps" :key="idx" class="mr-2">
+              {{ currency }}{{ b.toFixed(2) }}
+            </span>
+          </template>
+          <template v-else>
+            <span class="text-slate-500 text-sm">None</span>
+          </template>
+        </div>
+        <div class="text-[11px] text-slate-400 mt-1">
+          Exact zero-payoff spot price(s)
+        </div>
+      </div>
+
+      <!-- Price Belief / Market Direction Card -->
+      <div class="bg-slate-900/80 border border-slate-800/80 rounded-xl p-4 relative overflow-hidden backdrop-blur-sm">
+        <div class="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">
+          <span>Market Outlook</span>
+          <span class="text-[10px] bg-purple-500/10 text-purple-400 px-1.5 py-0.5 rounded border border-purple-500/20">BELIEF</span>
+        </div>
+        <div class="mt-0.5">
+          <span :class="priceBelief.badge" class="inline-block px-2.5 py-0.5 rounded-full text-xs font-extrabold border">
+            {{ priceBelief.title }}
+          </span>
+        </div>
+        <div class="text-[11px] text-slate-400 mt-1 line-clamp-1" :title="priceBelief.desc">
+          {{ priceBelief.desc }}
+        </div>
+      </div>
+
+      <!-- Profile Risk Card -->
+      <div class="bg-slate-900/80 border border-slate-800/80 rounded-xl p-4 relative overflow-hidden backdrop-blur-sm">
+        <div class="flex items-center justify-between text-slate-400 text-xs font-bold uppercase tracking-wider mb-1">
+          <span>Risk Profile</span>
+          <span class="text-[10px] bg-amber-500/10 text-amber-400 px-1.5 py-0.5 rounded border border-amber-500/20">RATING</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <span :class="riskProfile.ratingColor" class="px-2 py-0.5 rounded text-xs font-extrabold border">
+            {{ riskProfile.rating }}
+          </span>
+          <span class="text-xs font-mono font-bold text-slate-300">
+            R:R {{ riskProfile.rrRatio }}
+          </span>
+        </div>
+        <div class="text-[11px] text-slate-400 mt-1">
+          {{ riskProfile.riskType }} • {{ riskProfile.rewardType }}
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Main Workspace Layout -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      <!-- Left Sidebar: Controls, Presets & Leg Management (4 cols) -->
+      <div class="lg:col-span-4 space-y-5">
+
+        <!-- Preset Strategies Card -->
+        <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-5 space-y-4">
+          <div class="flex items-center justify-between">
+            <h2 class="text-xs font-extrabold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+              <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+              Strategy Presets
+            </h2>
+          </div>
+
+          <div>
+            <label class="block text-xs text-slate-400 font-semibold mb-1.5">Select Preset Strategy</label>
+            <select 
+              v-model="selectedPreset" 
+              @change="applyPreset"
+              class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-200 font-semibold focus:outline-none focus:border-indigo-500">
+              <option value="long_call">Long Call (Default)</option>
+              <option value="long_put">Long Put</option>
+              <option value="short_call">Short Call (Naked)</option>
+              <option value="short_put">Short Put (Naked)</option>
+              <option value="bull_call_spread">Bull Call Spread</option>
+              <option value="bear_put_spread">Bear Put Spread</option>
+              <option value="long_straddle">Long Straddle</option>
+              <option value="long_strangle">Long Strangle</option>
+              <option value="iron_condor">Iron Condor</option>
+              <option value="synthetic_long">Synthetic Long Stock</option>
+              <option value="covered_call">Covered Call</option>
+              <option value="protective_put">Protective Put</option>
+              <option value="custom">Custom Strategy</option>
+            </select>
+          </div>
+
+          <!-- Spot Price, Lot Size, Step Settings -->
+          <div class="grid grid-cols-2 gap-3 pt-1">
+            <div>
+              <label class="block text-xs text-slate-400 font-medium mb-1">Underlying Spot (S₀)</label>
+              <div class="relative">
+                <span class="absolute left-3 top-2 text-xs text-slate-500 font-mono">{{ currency }}</span>
+                <input 
+                  type="number" 
+                  step="1" 
+                  v-model.number="underlyingPrice"
+                  class="w-full bg-slate-950 border border-slate-800 rounded-lg pl-7 pr-3 py-1.5 text-sm font-mono text-slate-200 focus:outline-none focus:border-indigo-500">
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs text-slate-400 font-medium mb-1">Table Step Interval</label>
+              <div class="relative">
+                <span class="absolute left-3 top-2 text-xs text-slate-500 font-mono">{{ currency }}</span>
+                <input 
+                  type="number" 
+                  step="0.5" 
+                  min="0.5"
+                  v-model.number="tableStep"
+                  class="w-full bg-slate-950 border border-slate-800 rounded-lg pl-7 pr-3 py-1.5 text-sm font-mono text-slate-200 focus:outline-none focus:border-indigo-500">
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs text-slate-400 font-medium mb-1">Lot Size (Shares/Lot)</label>
+              <input 
+                type="number" 
+                step="1" 
+                min="1"
+                v-model.number="lotSize"
+                class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-sm font-mono text-slate-200 focus:outline-none focus:border-indigo-500">
+            </div>
+
+            <div>
+              <label class="block text-xs text-slate-400 font-medium mb-1">Number of Lots</label>
+              <input 
+                type="number" 
+                step="1" 
+                min="1"
+                v-model.number="numLots"
+                class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-sm font-mono text-slate-200 focus:outline-none focus:border-indigo-500">
+            </div>
+          </div>
+        </div>
+
+        <!-- Option Legs Manager Card -->
+        <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-5 space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h2 class="text-xs font-extrabold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/></svg>
+                Option Legs Manager
+              </h2>
+              <p class="text-[11px] text-slate-400">Prices inputted per single share</p>
+            </div>
+            <button 
+              @click="addLeg" 
+              class="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg shadow transition-colors flex items-center gap-1">
+              + Add Leg
+            </button>
+          </div>
+
+          <!-- Active Legs List -->
+          <div class="space-y-3 max-h-[460px] overflow-y-auto pr-1">
+            <div 
+              v-for="(leg, index) in legs" 
+              :key="leg.id"
+              class="bg-slate-950 border border-slate-800 hover:border-slate-700 rounded-xl p-3.5 space-y-3 transition-all relative">
+              
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-extrabold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <span class="w-5 h-5 rounded-full bg-slate-800 flex items-center justify-center text-[10px] text-indigo-400 font-mono">
+                    #{{ index + 1 }}
+                  </span>
+                  Leg Breakdown
+                </span>
+
+                <div class="flex items-center gap-1.5">
+                  <!-- Action Toggle (Buy / Sell) -->
+                  <button 
+                    @click="leg.action = leg.action === 'buy' ? 'sell' : 'buy'"
+                    :class="leg.action === 'buy' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border-rose-500/30'"
+                    class="px-2 py-0.5 text-xs font-bold uppercase rounded border transition-colors">
+                    {{ leg.action }}
+                  </button>
+
+                  <!-- Option Type Toggle (Call / Put / Stock) -->
+                  <select 
+                    v-model="leg.type" 
+                    class="bg-slate-800 text-xs font-bold uppercase rounded px-2 py-0.5 text-slate-200 border border-slate-700 focus:outline-none">
+                    <option value="call">Call</option>
+                    <option value="put">Put</option>
+                    <option value="stock">Stock</option>
+                  </select>
+
+                  <!-- Remove Leg -->
+                  <button 
+                    @click="removeLeg(index)" 
+                    class="p-1 text-slate-500 hover:text-rose-400 transition-colors ml-1" 
+                    title="Remove Leg">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Inputs for Strike (E), Premium (PR), Qty -->
+              <div class="grid grid-cols-3 gap-2">
+                <div>
+                  <label class="block text-[10px] font-semibold text-slate-400 mb-0.5">
+                    {{ leg.type === 'stock' ? 'Entry Price' : 'Strike (E)' }}
+                  </label>
+                  <div class="relative">
+                    <span class="absolute left-2 top-1.5 text-[11px] text-slate-500 font-mono">{{ currency }}</span>
+                    <input 
+                      type="number" 
+                      step="0.5" 
+                      v-model.number="leg.strike"
+                      class="w-full bg-slate-900 border border-slate-800 rounded pl-5 pr-2 py-1 text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-500">
+                  </div>
+                </div>
+
+                <div>
+                  <label class="block text-[10px] font-semibold text-slate-400 mb-0.5">
+                    {{ leg.type === 'stock' ? 'N/A' : 'Premium / Share' }}
+                  </label>
+                  <div class="relative">
+                    <span class="absolute left-2 top-1.5 text-[11px] text-slate-500 font-mono">{{ currency }}</span>
+                    <input 
+                      type="number" 
+                      step="0.1" 
+                      :disabled="leg.type === 'stock'"
+                      v-model.number="leg.premium"
+                      class="w-full bg-slate-900 border border-slate-800 rounded pl-5 pr-2 py-1 text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-500 disabled:opacity-30">
+                  </div>
+                </div>
+
+                <div>
+                  <label class="block text-[10px] font-semibold text-slate-400 mb-0.5">Qty Ratio</label>
+                  <input 
+                    type="number" 
+                    min="1" 
+                    step="1" 
+                    v-model.number="leg.quantity"
+                    class="w-full bg-slate-900 border border-slate-800 rounded px-2 py-1 text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-500">
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Right Column: Graph Visualizer & Payoff Table (8 cols) -->
+      <div class="lg:col-span-8 space-y-6">
+
+        <!-- Workspace Tabs Bar -->
+        <div class="bg-slate-900/90 border border-slate-800 rounded-xl p-1.5 flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-1">
+            <button 
+              @click="activeTab = 'graph'"
+              :class="activeTab === 'graph' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
+              class="px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/></svg>
+              Payoff Graph (Point Markers)
+            </button>
+            <button 
+              @click="activeTab = 'table'"
+              :class="activeTab === 'table' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
+              class="px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+              Notebook Payoff Table
+            </button>
+            <button 
+              @click="activeTab = 'inspector'"
+              :class="activeTab === 'inspector' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'"
+              class="px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-2">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+              Target Price Inspector
+            </button>
+          </div>
+
+          <div v-if="activeTab === 'graph'" class="flex items-center gap-3 px-2">
+            <label class="flex items-center gap-1.5 cursor-pointer text-xs text-slate-300">
+              <input type="checkbox" v-model="showLegCurves" class="rounded bg-slate-950 border-slate-700 text-indigo-600 focus:ring-0">
+              Show Sub-Leg Curves
+            </label>
+          </div>
+        </div>
+
+        <!-- TAB 1: PAYOFF GRAPH VIEW -->
+        <div v-show="activeTab === 'graph'" class="bg-slate-900/90 border border-slate-800 rounded-xl p-5 space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
+            <div>
+              <h3 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+                Net Payoff Curve with Key Point Markers
+                <span class="text-xs font-mono text-indigo-400 font-semibold">({{ viewModeText }})</span>
+              </h3>
+              <p class="text-xs text-slate-400">Explicit dots on curve for Strikes (Amber ⚡), BEP (Cyan 🎯), and Spot S₀ (Blue 📍)</p>
+            </div>
+            
+            <div class="flex items-center gap-2 text-xs">
+              <span class="text-slate-400">Graph Span:</span>
+              <input type="range" min="15" max="60" step="5" v-model.number="priceRangePercent" class="w-24 accent-indigo-500 cursor-pointer">
+              <span class="font-mono text-slate-300">±{{ priceRangePercent }}%</span>
+            </div>
+          </div>
+
+          <!-- Chart Canvas -->
+          <div class="relative w-full h-[430px]">
+            <canvas id="payoffChart"></canvas>
+          </div>
+
+          <!-- Legend Badges Bar -->
+          <div class="flex flex-wrap items-center justify-between text-xs text-slate-400 pt-3 border-t border-slate-800/80 gap-3">
+            <div class="flex items-center gap-4">
+              <span class="flex items-center gap-1.5 font-semibold text-amber-400">
+                <span class="w-3 h-3 rounded-full bg-amber-400 border border-white inline-block"></span> ⚡ Strike Price (E)
+              </span>
+              <span class="flex items-center gap-1.5 font-semibold text-cyan-400">
+                <span class="w-3 h-3 rounded-full bg-cyan-400 border border-white inline-block"></span> 🎯 Break-Even (BEP)
+              </span>
+              <span class="flex items-center gap-1.5 font-semibold text-blue-400">
+                <span class="w-3 h-3 rounded-full bg-blue-500 border border-white inline-block"></span> 📍 Spot Price (S₀)
+              </span>
+            </div>
+            <div class="text-[11px] text-slate-400">
+              * Hover over point markers to inspect exact price & payoff values
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: PAYOFF TABLE VIEW -->
+        <div v-show="activeTab === 'table'" class="bg-slate-900/90 border border-slate-800 rounded-xl p-5 space-y-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+            <div>
+              <h3 class="text-sm font-bold text-slate-200">Payoff Table</h3>
+              <p class="text-xs text-slate-400">
+                Spot prices generated as <strong class="text-slate-300">Strike ± Step Interval</strong> plus explicit Strike & BEP rows
+              </p>
+            </div>
+
+            <div class="flex items-center gap-3">
+              <!-- Export CSV Button -->
+              <button 
+                @click="exportCSV" 
+                class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5">
+                <svg class="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                Export CSV
+              </button>
+            </div>
+          </div>
+
+          <!-- Table Container -->
+          <div class="overflow-x-auto max-h-[460px] rounded-xl border border-slate-800/90">
+            <table class="w-full text-left text-xs font-mono border-collapse">
+              <thead class="bg-slate-950 text-slate-400 sticky top-0 z-20 border-b border-slate-800 text-[11px] uppercase tracking-wider">
+                <tr>
+                  <th class="py-3 px-3.5 border-r border-slate-800/80 bg-slate-950">Spot Price (S)</th>
+                  
+                  <!-- Dynamic Leg Headers (with sub-columns) -->
+                  <template v-for="(leg, idx) in legs" :key="leg.id">
+                    <th colspan="2" class="py-2 px-3 text-center border-r border-slate-800 bg-slate-900/60">
+                      Leg #{{ idx+1 }}: {{ leg.action.toUpperCase() }} {{ leg.type.toUpperCase() }} (E={{ currency }}{{ leg.strike }})
+                    </th>
+                  </template>
+
+                  <th class="py-3 px-3 text-right bg-slate-950">Pay (Intrinsic)</th>
+                  <th class="py-3 px-3 text-right bg-slate-950">PR (Net Prem)</th>
+                  <th class="py-3 px-3 text-right bg-slate-950 text-slate-100 font-bold">P/L (Net Payoff)</th>
+                </tr>
+                
+                <!-- Sub-header Row for Leg Columns -->
+                <tr class="bg-slate-950/80 text-[10px] text-slate-400 border-b border-slate-800">
+                  <th class="py-1 px-3 border-r border-slate-800/80">At Expiry</th>
+                  <template v-for="leg in legs" :key="'sub_'+leg.id">
+                    <th class="py-1 px-2 text-center text-slate-400 border-r border-slate-800/40">Status</th>
+                    <th class="py-1 px-2 text-right text-slate-400 border-r border-slate-800">Intrinsic Value</th>
+                  </template>
+                  <th class="py-1 px-3 text-right">Sum Intrinsic</th>
+                  <th class="py-1 px-3 text-right">Fixed PR</th>
+                  <th class="py-1 px-3 text-right font-bold text-indigo-400">{{ viewModeText }}</th>
+                </tr>
+              </thead>
+              
+              <tbody class="divide-y divide-slate-800/50 bg-slate-900/30">
+                <tr 
+                  v-for="row in tableData" 
+                  :key="row.price"
+                  :class="getRowClass(row)"
+                  class="transition-colors hover:bg-slate-800/50">
+                  
+                  <!-- Spot Price S Column with Badges -->
+                  <td class="py-2 px-3.5 border-r border-slate-800/80 font-bold text-slate-100">
+                    <div class="flex items-center gap-1.5">
+                      <span>{{ currency }}{{ row.price.toFixed(2) }}</span>
+                      
+                      <!-- Row Tag Badges -->
+                      <span v-if="row.isStrike" class="text-[9px] bg-amber-500/20 text-amber-400 border border-amber-500/40 px-1 py-0.2 rounded font-sans">
+                        ⚡ Strike E={{ currency }}{{ row.price.toFixed(0) }}
+                      </span>
+                      <span v-else-if="row.isBEP" class="text-[9px] bg-cyan-500/20 text-cyan-400 border border-cyan-500/40 px-1 py-0.2 rounded font-sans">
+                        🎯 BEP
+                      </span>
+                      <span v-else-if="row.isSpot" class="text-[9px] bg-blue-500/20 text-blue-400 border border-blue-500/40 px-1 py-0.2 rounded font-sans">
+                        📍 Spot S₀
+                      </span>
+                    </div>
+                  </td>
+
+                  <!-- Individual Leg Breakdown Sub-Columns -->
+                  <template v-for="(legVal, idx) in row.legsDetail" :key="idx">
+                    <!-- Status: E (Exercise) or L (Lapse) -->
+                    <td class="py-2 px-2 text-center border-r border-slate-800/40 font-sans">
+                      <span 
+                        :class="legVal.status === 'E' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-slate-800 text-slate-400 border-slate-700'"
+                        class="px-1.5 py-0.2 rounded text-[10px] font-bold border">
+                        {{ legVal.status }}
+                      </span>
+                    </td>
+
+                    <!-- Formula Intrinsic Value -->
+                    <td class="py-2 px-2 text-right border-r border-slate-800" :class="legVal.intrinsic >= 0 ? 'text-slate-300' : 'text-rose-400'">
+                      <span class="text-[10px] text-slate-400 font-sans mr-1">{{ legVal.formula }}</span>
+                      <span>{{ formatValue(legVal.intrinsic) }}</span>
+                    </td>
+                  </template>
+
+                  <!-- Total Intrinsic Payoff (Pay) -->
+                  <td class="py-2 px-3 text-right font-medium text-slate-300">
+                    {{ formatValue(row.totalIntrinsic) }}
+                  </td>
+
+                  <!-- Net Premium (PR) -->
+                  <td class="py-2 px-3 text-right font-medium" :class="row.netPremium >= 0 ? 'text-emerald-400' : 'text-slate-400'">
+                    {{ formatValue(row.netPremium) }}
+                  </td>
+
+                  <!-- Net P/L -->
+                  <td class="py-2 px-3 text-right font-bold text-sm" :class="row.netPL >= 0 ? 'text-emerald-400' : 'text-rose-400'">
+                    {{ formatValue(row.netPL) }}
+                  </td>
+
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- TAB 3: TARGET PRICE INSPECTOR -->
+        <div v-show="activeTab === 'inspector'" class="bg-slate-900/90 border border-slate-800 rounded-xl p-6 space-y-6">
+          <div class="border-b border-slate-800 pb-3">
+            <h3 class="text-sm font-bold text-slate-200">Target Expiration Price Inspector</h3>
+            <p class="text-xs text-slate-400">Simulate exact payoff breakdown at any target stock price on expiration date</p>
+          </div>
+
+          <!-- Slider Controls -->
+          <div class="bg-slate-950 border border-slate-800 rounded-xl p-5 space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <label class="text-xs font-bold text-slate-300 uppercase tracking-wider">Target Stock Price (S<sub>target</sub>):</label>
+              <div class="relative w-48">
+                <span class="absolute left-3 top-2 text-sm text-slate-500 font-mono">{{ currency }}</span>
+                <input 
+                  type="number" 
+                  step="0.5" 
+                  v-model.number="targetPrice"
+                  class="w-full bg-slate-900 border border-slate-700 rounded-lg pl-8 pr-3 py-1.5 text-base font-mono font-bold text-slate-100 focus:outline-none focus:border-indigo-500">
+              </div>
+            </div>
+
+            <input 
+              type="range" 
+              :min="Math.max(0, underlyingPrice * 0.5)" 
+              :max="underlyingPrice * 1.5" 
+              step="0.5"
+              v-model.number="targetPrice" 
+              class="w-full accent-indigo-500 cursor-pointer">
+          </div>
+
+          <!-- Inspection Output Cards -->
+          <div v-if="targetSimulatorResult" class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="bg-slate-950 border border-slate-800 rounded-xl p-4">
+              <span class="text-xs text-slate-400 font-semibold">Net Profit / Loss</span>
+              <div class="text-2xl font-black font-mono mt-1" :class="targetSimulatorResult.netPayoff >= 0 ? 'text-emerald-400' : 'text-rose-400'">
+                {{ formatValue(targetSimulatorResult.netPayoff) }}
+              </div>
+              <span class="text-[10px] text-slate-500">{{ viewModeText }}</span>
+            </div>
+
+            <div class="bg-slate-950 border border-slate-800 rounded-xl p-4">
+              <span class="text-xs text-slate-400 font-semibold">Return on Risk (ROI)</span>
+              <div class="text-2xl font-black font-mono mt-1" :class="targetSimulatorResult.roi >= 0 ? 'text-emerald-400' : 'text-rose-400'">
+                {{ targetSimulatorResult.roi >= 0 ? '+' : '' }}{{ targetSimulatorResult.roi.toFixed(2) }}%
+              </div>
+              <span class="text-[10px] text-slate-500">Relative to max risk capital</span>
+            </div>
+
+            <div class="bg-slate-950 border border-slate-800 rounded-xl p-4">
+              <span class="text-xs text-slate-400 font-semibold">% Stock Movement</span>
+              <div class="text-2xl font-black font-mono text-blue-400 mt-1">
+                {{ targetSimulatorResult.priceChangePercent >= 0 ? '+' : '' }}{{ targetSimulatorResult.priceChangePercent.toFixed(2) }}%
+              </div>
+              <span class="text-[10px] text-slate-500">From initial S₀ ({{ currency }}{{ underlyingPrice.toFixed(2) }})</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Footer -->
+    <footer class="pt-6 border-t border-slate-900 text-center text-xs text-slate-500 space-y-1">
+      <p>Options Payoff Calculator • Calculated strictly per share and adjusted for lot size multiplier.</p>
+    </footer>
+
+  </div>
+
+  <!-- Vue 3 & Chart.js Application Logic -->
+  <script>
+    const { createApp, ref, computed, watch, onMounted, nextTick } = Vue;
+
+    createApp({
+      setup() {
+        // Core State
+        const currency = ref('₹');
+        const viewMode = ref('share'); // 'share', 'lot', 'total'
+        const lotSize = ref(1300);
+        const numLots = ref(1);
+        const accountingFormat = ref('parens'); // 'minus' (-20) or 'parens' ((20))
+        const underlyingPrice = ref(345.8);
+        const tableStep = ref(5);
+        const selectedPreset = ref('long_call');
+        const activeTab = ref('graph');
+        const showLegCurves = ref(true);
+        const priceRangePercent = ref(35);
+        const targetPrice = ref(Math.round(underlyingPrice.value * 1.05));
+
+        // Default Initial Strategy: Simple Long Call
+        const legs = ref([
+          { id: 1, type: 'call', action: 'buy', strike: 345, premium: 8.85, quantity: 1 }
+        ]);
+
+        let chartInstance = null;
+
+        // View Mode Multiplier Calculator
+        const multiplier = computed(() => {
+          if (viewMode.value === 'share') return 1;
+          if (viewMode.value === 'lot') return Number(lotSize.value) || 1300;
+          if (viewMode.value === 'total') return (Number(lotSize.value) || 1300) * (Number(numLots.value) || 1);
+          return 1;
+        });
+
+        const viewModeText = computed(() => {
+          if (viewMode.value === 'share') return 'Per Share';
+          if (viewMode.value === 'lot') return `Per Lot (${lotSize.value} Shrs)`;
+          if (viewMode.value === 'total') return `Total (${numLots.value} Lot${numLots.value > 1 ? 's' : ''})`;
+          return 'Per Share';
+        });
+
+        // Money Formatter (Supports Accounting parens format)
+        function formatValue(amount) {
+          const val = Number(amount) * multiplier.value;
+          if (isNaN(val)) return '0.00';
+          
+          const absStr = Math.abs(val).toFixed(2);
+          if (val < -0.001) {
+            return accountingFormat.value === 'parens'
+              ? `(${currency.value}${absStr})`
+              : `-${currency.value}${absStr}`;
+          }
+          if (val > 0.001) {
+            return `+${currency.value}${absStr}`;
+          }
+          return `${currency.value}0.00`;
+        }
+
+        function formatMetricValue(val) {
+          if (val === 'Unlimited') return 'Unlimited';
+          return formatValue(val);
+        }
+
+        // --- Options Math Engine ---
+
+        // Single Leg Intrinsic Payoff & Status Calculation
+        function calculateSingleLegDetail(leg, S) {
+          const qty = Number(leg.quantity) || 1;
+          const E = Number(leg.strike) || 0;
+          const PR = Number(leg.premium) || 0;
+          const isBuy = leg.action === 'buy';
+
+          if (leg.type === 'stock') {
+            const val = isBuy ? (S - E) : (E - S);
+            return {
+              status: isBuy ? 'BUY' : 'SELL',
+              formula: isBuy ? '+(S-E)' : '-(S-E)',
+              intrinsic: qty * val,
+              premium: 0
+            };
+          }
+
+          let status = 'L';
+          let formula = '0';
+          let intrinsicPerShare = 0;
+
+          if (leg.type === 'call') {
+            if (S > E) {
+              status = 'E';
+              formula = isBuy ? '+(S-E)' : '-(S-E)';
+              intrinsicPerShare = isBuy ? (S - E) : -(S - E);
+            }
+          } else if (leg.type === 'put') {
+            if (S < E) {
+              status = 'E';
+              formula = isBuy ? '+(E-S)' : '-(E-S)';
+              intrinsicPerShare = isBuy ? (E - S) : -(E - S);
+            }
+          }
+
+          const premiumNet = isBuy ? -PR : PR;
+
+          return {
+            status,
+            formula,
+            intrinsic: qty * intrinsicPerShare,
+            premium: qty * premiumNet
+          };
+        }
+
+        // Net Payoff per Share at expiration price S
+        function calculateNetPayoff(S) {
+          if (!legs.value || legs.value.length === 0) return 0;
+          return legs.value.reduce((sum, leg) => {
+            const detail = calculateSingleLegDetail(leg, S);
+            return sum + detail.intrinsic + detail.premium;
+          }, 0);
+        }
+
+        // Constant Net Premium Received/Paid per Share across strategy
+        const netPremiumPerShare = computed(() => {
+          return legs.value.reduce((sum, leg) => {
+            if (leg.type === 'stock') return sum;
+            const PR = Number(leg.premium) || 0;
+            const qty = Number(leg.quantity) || 1;
+            return sum + (leg.action === 'buy' ? -PR * qty : PR * qty);
+          }, 0);
+        });
+
+        // Exact Break-Even Points (BEP) Solver
+        const beps = computed(() => {
+          if (legs.value.length === 0) return [];
+
+          const strikes = legs.value.map(l => Number(l.strike)).filter(s => !isNaN(s) && s >= 0);
+          const currentS = Number(underlyingPrice.value) || 100;
+          
+          const knots = Array.from(new Set([0, ...strikes, currentS])).sort((a, b) => a - b);
+          const maxK = knots[knots.length - 1] || 100;
+          knots.push(maxK * 3);
+
+          const foundBeps = [];
+
+          for (let i = 0; i < knots.length - 1; i++) {
+            const x1 = knots[i];
+            const x2 = knots[i + 1];
+            const y1 = calculateNetPayoff(x1);
+            const y2 = calculateNetPayoff(x2);
+
+            if (Math.abs(y1) < 1e-6) {
+              if (!foundBeps.some(b => Math.abs(b - x1) < 0.01)) foundBeps.push(x1);
+            }
+
+            if (y1 * y2 < 0) {
+              const root = x1 + (0 - y1) * (x2 - x1) / (y2 - y1);
+              if (!foundBeps.some(b => Math.abs(b - root) < 0.01)) foundBeps.push(root);
+            }
+          }
+
+          return foundBeps.sort((a, b) => a - b);
+        });
+
+        // High price slope helper (S -> inf)
+        function getHighPriceSlope() {
+          return legs.value.reduce((slope, leg) => {
+            const qty = Number(leg.quantity) || 1;
+            const sign = leg.action === 'buy' ? 1 : -1;
+            if (leg.type === 'call' || leg.type === 'stock') return slope + sign * qty;
+            return slope;
+          }, 0);
+        }
+
+        // Max Profit / Loss Engine
+        const maxProfitAndLoss = computed(() => {
+          if (legs.value.length === 0) return { maxProfit: 0, maxLoss: 0, maxProfitVal: 0, maxLossVal: 0 };
+
+          const highSlope = getHighPriceSlope();
+          const strikes = legs.value.map(l => Number(l.strike)).filter(s => s >= 0);
+          const samplePoints = Array.from(new Set([0, ...strikes, ...beps.value, underlyingPrice.value]));
+          
+          const maxK = Math.max(...samplePoints, 100);
+          samplePoints.push(maxK * 2);
+
+          const payoffs = samplePoints.map(p => calculateNetPayoff(p));
+
+          const isProfitUnlimited = highSlope > 0;
+          const isLossUnlimited = highSlope < 0;
+
+          const maxPVal = isProfitUnlimited ? Infinity : Math.max(...payoffs);
+          const maxLVal = isLossUnlimited ? -Infinity : Math.min(...payoffs);
+
+          return {
+            maxProfit: isProfitUnlimited ? 'Unlimited' : maxPVal,
+            maxLoss: isLossUnlimited ? 'Unlimited' : maxLVal,
+            maxProfitVal: maxPVal,
+            maxLossVal: maxLVal
+          };
+        });
+
+        // Market Belief Classification
+        const priceBelief = computed(() => {
+          if (legs.value.length === 0) return { title: 'No Legs', desc: 'Add legs', badge: 'bg-slate-800 text-slate-400' };
+
+          const highSlope = getHighPriceSlope();
+          const bepList = beps.value;
+
+          if (bepList.length === 0) {
+            const p = calculateNetPayoff(underlyingPrice.value);
+            if (p > 0) return { title: 'Always Profitable', desc: 'Guaranteed profit across range', badge: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' };
+            return { title: 'Always Loss', desc: 'Net loss across all ranges', badge: 'bg-rose-500/20 text-rose-400 border-rose-500/30' };
+          }
+
+          if (bepList.length === 1) {
+            const b = bepList[0];
+            if (highSlope > 0) {
+              return { title: 'Bullish', desc: `Profitable above ${currency.value}${b.toFixed(2)}`, badge: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' };
+            } else {
+              return { title: 'Bearish', desc: `Profitable below ${currency.value}${b.toFixed(2)}`, badge: 'bg-rose-500/20 text-rose-400 border-rose-500/30' };
+            }
+          }
+
+          if (bepList.length === 2) {
+            const b1 = bepList[0], b2 = bepList[1];
+            const mid = (b1 + b2) / 2;
+            if (calculateNetPayoff(mid) > 0) {
+              return { title: 'Neutral / Range-Bound', desc: `Profitable between ${currency.value}${b1.toFixed(2)} - ${currency.value}${b2.toFixed(2)}`, badge: 'bg-amber-500/20 text-amber-400 border-amber-500/30' };
+            } else {
+              return { title: 'High Volatility', desc: `Profitable outside ${currency.value}${b1.toFixed(2)} - ${currency.value}${b2.toFixed(2)}`, badge: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30' };
+            }
+          }
+
+          return { title: 'Multi-Leg Combination', desc: 'Custom bounded price zones', badge: 'bg-purple-500/20 text-purple-400 border-purple-500/30' };
+        });
+
+        // Risk Profile Rating
+        const riskProfile = computed(() => {
+          const mp = maxProfitAndLoss.value;
+          const isLossDefined = mp.maxLoss !== 'Unlimited';
+          const isProfitDefined = mp.maxProfit !== 'Unlimited';
+
+          let rrRatio = 'N/A';
+          if (isLossDefined && isProfitDefined && Math.abs(mp.maxProfitVal) > 0) {
+            const ratio = Math.abs(mp.maxLossVal / mp.maxProfitVal);
+            rrRatio = `1 : ${(1 / ratio).toFixed(2)}`;
+          } else if (!isProfitDefined && isLossDefined) {
+            rrRatio = '1 : ∞';
+          }
+
+          let rating = 'Moderate';
+          let ratingColor = 'text-amber-400 border-amber-500/30 bg-amber-500/10';
+
+          if (!isLossDefined) {
+            rating = 'Unlimited Risk';
+            ratingColor = 'text-rose-400 border-rose-500/40 bg-rose-500/20';
+          } else if (Math.abs(mp.maxLossVal) <= 3) {
+            rating = 'Low Risk';
+            ratingColor = 'text-emerald-400 border-emerald-500/30 bg-emerald-500/10';
+          }
+
+          return {
+            riskType: isLossDefined ? 'Defined Risk' : 'Undefined Risk',
+            rewardType: isProfitDefined ? 'Defined Reward' : 'Unlimited Reward',
+            rrRatio,
+            rating,
+            ratingColor
+          };
+        });
+
+        // --- Dynamic Spot Price Array Generation ---
+        // (Includes Strike Prices, BEPs, Spot S0, plus Strike +/- step intervals)
+        const priceArray = computed(() => {
+          const step = Number(tableStep.value) || 5;
+          const S0 = Number(underlyingPrice.value) || 100;
+          const strikes = legs.value.map(l => Number(l.strike)).filter(s => s >= 0);
+          
+          const minStrike = strikes.length > 0 ? Math.min(...strikes) : S0;
+          const maxStrike = strikes.length > 0 ? Math.max(...strikes) : S0;
+
+          // Range calculation: Min strike - 5*step to Max strike + 5*step
+          const startPrice = Math.max(0, Math.floor((minStrike - 6 * step) / step) * step);
+          const endPrice = Math.ceil((maxStrike + 6 * step) / step) * step;
+
+          // 1. Step interval points
+          const pointsSet = new Set();
+          for (let p = startPrice; p <= endPrice; p += step) {
+            pointsSet.add(Number(p.toFixed(2)));
+          }
+
+          // 2. Explicitly add all Strikes, BEPs, and Spot S0
+          strikes.forEach(s => pointsSet.add(Number(s.toFixed(2))));
+          beps.value.forEach(b => pointsSet.add(Number(b.toFixed(2))));
+          pointsSet.add(Number(S0.toFixed(2)));
+
+          // 3. Deduplicate points within 0.05 threshold and sort ascending
+          const rawSorted = Array.from(pointsSet).sort((a, b) => a - b);
+          const deduplicated = [];
+
+          for (let i = 0; i < rawSorted.length; i++) {
+            const current = rawSorted[i];
+            if (deduplicated.length === 0) {
+              deduplicated.push(current);
+            } else {
+              const last = deduplicated[deduplicated.length - 1];
+              if (Math.abs(current - last) > 0.05) {
+                deduplicated.push(current);
+              }
+            }
+          }
+
+          return deduplicated;
+        });
+
+        // Payoff Table Rows Data
+        const tableData = computed(() => {
+          const S0 = Number(underlyingPrice.value) || 100;
+          const strikes = legs.value.map(l => Number(l.strike));
+          const bepList = beps.value;
+
+          return priceArray.value.map(price => {
+            const legsDetail = legs.value.map(leg => calculateSingleLegDetail(leg, price));
+            const totalIntrinsic = legsDetail.reduce((sum, d) => sum + d.intrinsic, 0);
+            const netPremium = netPremiumPerShare.value;
+            const netPL = totalIntrinsic + netPremium;
+
+            const isStrike = strikes.some(s => Math.abs(s - price) < 0.06);
+            const isBEP = bepList.some(b => Math.abs(b - price) < 0.06);
+            const isSpot = Math.abs(S0 - price) < 0.06;
+
+            return {
+              price,
+              legsDetail,
+              totalIntrinsic,
+              netPremium,
+              netPL,
+              isStrike,
+              isBEP,
+              isSpot
+            };
+          });
+        });
+
+        function getRowClass(row) {
+          if (row.isBEP) return 'bg-cyan-500/10 font-bold border-l-4 border-l-cyan-400';
+          if (row.isStrike) return 'bg-amber-500/10 font-bold border-l-4 border-l-amber-400';
+          if (row.isSpot) return 'bg-blue-500/10 font-bold border-l-4 border-l-blue-400';
+          return '';
+        }
+
+        // Target Inspector Result
+        const targetSimulatorResult = computed(() => {
+          const target = Number(targetPrice.value) || 100;
+          const S0 = Number(underlyingPrice.value) || 100;
+
+          const netPayoff = calculateNetPayoff(target);
+          const priceChangePercent = ((target - S0) / S0) * 100;
+          const maxL = Math.abs(maxProfitAndLoss.value.maxLossVal) || 1;
+          const roi = (netPayoff / maxL) * 100;
+
+          return {
+            target,
+            netPayoff,
+            priceChangePercent,
+            roi
+          };
+        });
+
+        // Preset Apply Utility
+        function applyPreset() {
+          const S = Number(underlyingPrice.value) || 100;
+          
+          switch (selectedPreset.value) {
+            case 'long_call':
+              legs.value = [{ id: 1, type: 'call', action: 'buy', strike: S, premium: 5.00, quantity: 1 }];
+              break;
+            case 'long_put':
+              legs.value = [{ id: 1, type: 'put', action: 'buy', strike: S, premium: 5.00, quantity: 1 }];
+              break;
+            case 'short_call':
+              legs.value = [{ id: 1, type: 'call', action: 'sell', strike: S, premium: 5.00, quantity: 1 }];
+              break;
+            case 'short_put':
+              legs.value = [{ id: 1, type: 'put', action: 'sell', strike: S, premium: 5.00, quantity: 1 }];
+              break;
+            case 'bull_call_spread':
+              legs.value = [
+                { id: 1, type: 'call', action: 'buy', strike: S, premium: 5.00, quantity: 1 },
+                { id: 2, type: 'call', action: 'sell', strike: Math.round(S * 1.1), premium: 1.80, quantity: 1 }
+              ];
+              break;
+            case 'bear_put_spread':
+              legs.value = [
+                { id: 1, type: 'put', action: 'buy', strike: S, premium: 5.00, quantity: 1 },
+                { id: 2, type: 'put', action: 'sell', strike: Math.round(S * 0.9), premium: 1.80, quantity: 1 }
+              ];
+              break;
+            case 'long_straddle':
+              legs.value = [
+                { id: 1, type: 'call', action: 'buy', strike: S, premium: 4.50, quantity: 1 },
+                { id: 2, type: 'put', action: 'buy', strike: S, premium: 4.50, quantity: 1 }
+              ];
+              break;
+            case 'long_strangle':
+              legs.value = [
+                { id: 1, type: 'put', action: 'buy', strike: Math.round(S * 0.95), premium: 2.50, quantity: 1 },
+                { id: 2, type: 'call', action: 'buy', strike: Math.round(S * 1.05), premium: 2.50, quantity: 1 }
+              ];
+              break;
+            case 'iron_condor':
+              legs.value = [
+                { id: 1, type: 'put', action: 'buy', strike: Math.round(S * 0.85), premium: 0.80, quantity: 1 },
+                { id: 2, type: 'put', action: 'sell', strike: Math.round(S * 0.92), premium: 2.20, quantity: 1 },
+                { id: 3, type: 'call', action: 'sell', strike: Math.round(S * 1.08), premium: 2.20, quantity: 1 },
+                { id: 4, type: 'call', action: 'buy', strike: Math.round(S * 1.15), premium: 0.80, quantity: 1 }
+              ];
+              break;
+            case 'synthetic_long':
+              legs.value = [
+                { id: 1, type: 'call', action: 'buy', strike: S, premium: 5.00, quantity: 1 },
+                { id: 2, type: 'put', action: 'sell', strike: S, premium: 5.00, quantity: 1 }
+              ];
+              break;
+            case 'covered_call':
+              legs.value = [
+                { id: 1, type: 'stock', action: 'buy', strike: S, premium: 0, quantity: 1 },
+                { id: 2, type: 'call', action: 'sell', strike: Math.round(S * 1.05), premium: 3.20, quantity: 1 }
+              ];
+              break;
+            case 'protective_put':
+              legs.value = [
+                { id: 1, type: 'stock', action: 'buy', strike: S, premium: 0, quantity: 1 },
+                { id: 2, type: 'put', action: 'buy', strike: Math.round(S * 0.95), premium: 2.80, quantity: 1 }
+              ];
+              break;
+          }
+
+          nextTick(updateChart);
+        }
+
+        function addLeg() {
+          const S = Number(underlyingPrice.value) || 100;
+          legs.value.push({ id: Date.now(), type: 'call', action: 'buy', strike: S, premium: 3.00, quantity: 1 });
+          selectedPreset.value = 'custom';
+          nextTick(updateChart);
+        }
+
+        function removeLeg(index) {
+          legs.value.splice(index, 1);
+          selectedPreset.value = 'custom';
+          nextTick(updateChart);
+        }
+
+        function resetToDefault() {
+          underlyingPrice.value = 100;
+          tableStep.value = 5;
+          selectedPreset.value = 'long_call';
+          applyPreset();
+        }
+
+        function exportCSV() {
+          if (tableData.value.length === 0) return;
+          let csv = "data:text/csv;charset=utf-8,";
+          csv += "Spot Price,Net Intrinsic (Pay),Net Premium (PR),Net P/L\n";
+
+          tableData.value.forEach(r => {
+            csv += `${r.price.toFixed(2)},${r.totalIntrinsic.toFixed(2)},${r.netPremium.toFixed(2)},${(r.netPL * multiplier.value).toFixed(2)}\n`;
+          });
+
+          const uri = encodeURI(csv);
+          const link = document.createElement("a");
+          link.href = uri;
+          link.download = `Options_Payoff_Table_${Date.now()}.csv`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }
+
+        // --- Chart.js Visualizer Setup (No Vertical Background Lines + Explicit Curve Dots) ---
+
+        function initChart() {
+          const ctx = document.getElementById('payoffChart')?.getContext('2d');
+          if (!ctx) return;
+
+          chartInstance = new Chart(ctx, {
+            type: 'line',
+            data: { datasets: [] },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              interaction: {
+                mode: 'nearest',
+                intersect: false,
+              },
+              plugins: {
+                legend: {
+                  labels: {
+                    color: '#94a3b8',
+                    font: { family: 'Inter', size: 11, weight: '600' }
+                  }
+                },
+                tooltip: {
+                  backgroundColor: '#0f172a',
+                  titleColor: '#f8fafc',
+                  bodyColor: '#cbd5e1',
+                  borderColor: '#334155',
+                  borderWidth: 1,
+                  padding: 12,
+                  callbacks: {
+                    title: (items) => `Spot Price (S): ${currency.value}${Number(items[0].parsed.x).toFixed(2)}`,
+                    label: (context) => {
+                      const yVal = context.parsed.y;
+                      const label = context.dataset.label || 'Payoff';
+                      return `${label}: ${formatValue(yVal / multiplier.value)}`;
+                    }
+                  }
+                }
+              },
+              scales: {
+                x: {
+                  type: 'linear',
+                  title: {
+                    display: true,
+                    text: 'Underlying Stock Price at Expiration (S)',
+                    color: '#64748b',
+                    font: { family: 'Inter', size: 11, weight: '700' }
+                  },
+                  grid: {
+                    display: false, // Explicitly disabled vertical grid background lines
+                  },
+                  ticks: {
+                    color: '#94a3b8',
+                    font: { family: 'JetBrains Mono', size: 10 },
+                    callback: (val) => currency.value + Number(val).toFixed(0)
+                  }
+                },
+                y: {
+                  title: {
+                    display: true,
+                    text: `Net Payoff (${currency.value} ${viewModeText.value})`,
+                    color: '#64748b',
+                    font: { family: 'Inter', size: 11, weight: '700' }
+                  },
+                  grid: {
+                    color: (ctx) => ctx.tick.value === 0 ? '#38bdf8' : '#1e293b',
+                    lineWidth: (ctx) => ctx.tick.value === 0 ? 2 : 1
+                  },
+                  ticks: {
+                    color: '#94a3b8',
+                    font: { family: 'JetBrains Mono', size: 10 }
+                  }
+                }
+              }
+            }
+          });
+
+          updateChart();
+        }
+
+        function updateChart() {
+          if (!chartInstance) return;
+
+          const S0 = Number(underlyingPrice.value) || 100;
+          const mult = multiplier.value;
+
+          // Main continuous payoff curve data points
+          const curveData = priceArray.value.map(p => ({
+            x: p,
+            y: calculateNetPayoff(p) * mult
+          }));
+
+          // 1. Strike Point Markers (Amber Dots)
+          const strikes = legs.value.map(l => Number(l.strike));
+          const strikePoints = strikes.map(s => ({
+            x: s,
+            y: calculateNetPayoff(s) * mult
+          }));
+
+          // 2. BEP Point Markers (Cyan Dots at Y=0)
+          const bepPoints = beps.value.map(b => ({
+            x: b,
+            y: 0
+          }));
+
+          // 3. Spot S0 Point Marker (Blue Dot)
+          const spotPoint = [{
+            x: S0,
+            y: calculateNetPayoff(S0) * mult
+          }];
+
+          const datasets = [
+            // Main Strategy Net Payoff Line
+            {
+              label: `Strategy Net Payoff (${viewModeText.value})`,
+              data: curveData,
+              borderColor: '#10b981',
+              borderWidth: 3,
+              pointRadius: 0,
+              pointHoverRadius: 5,
+              tension: 0,
+              fill: {
+                target: 'origin',
+                above: 'rgba(16, 185, 129, 0.12)',
+                below: 'rgba(244, 63, 94, 0.12)'
+              }
+            },
+
+            // ⚡ Strike Dots Dataset
+            {
+              label: '⚡ Strike Prices (E)',
+              data: strikePoints,
+              borderColor: '#ffffff',
+              borderWidth: 2,
+              backgroundColor: '#f59e0b', // Amber dot
+              pointRadius: 7,
+              pointHoverRadius: 10,
+              showLine: false
+            },
+
+            // 🎯 BEP Dots Dataset
+            {
+              label: '🎯 Break-Even Points (BEP)',
+              data: bepPoints,
+              borderColor: '#ffffff',
+              borderWidth: 2,
+              backgroundColor: '#06b6d4', // Cyan dot
+              pointRadius: 7,
+              pointHoverRadius: 10,
+              showLine: false
+            },
+
+            // 📍 Spot Price (S0) Dot Dataset
+            {
+              label: '📍 Spot Price (S₀)',
+              data: spotPoint,
+              borderColor: '#ffffff',
+              borderWidth: 2,
+              backgroundColor: '#3b82f6', // Blue dot
+              pointRadius: 7,
+              pointHoverRadius: 10,
+              showLine: false
+            }
+          ];
+
+          // Sub-leg individual curves if enabled
+          if (showLegCurves.value) {
+            const legColors = ['#818cf8', '#c084fc', '#f472b6', '#38bdf8', '#facc15'];
+            legs.value.forEach((leg, idx) => {
+              const legData = priceArray.value.map(p => ({
+                x: p,
+                y: (calculateSingleLegDetail(leg, p).intrinsic + calculateSingleLegDetail(leg, p).premium) * mult
+              }));
+
+              datasets.push({
+                label: `Leg #${idx+1} (${leg.action.toUpperCase()} ${leg.type.toUpperCase()} @ ${leg.strike})`,
+                data: legData,
+                borderColor: legColors[idx % legColors.length],
+                borderWidth: 1.5,
+                borderDash: [4, 4],
+                pointRadius: 0,
+                showLine: true,
+                fill: false
+              });
+            });
+          }
+
+          chartInstance.data.datasets = datasets;
+          chartInstance.update();
+        }
+
+        // Watchers for dynamic re-renders
+        watch([legs, underlyingPrice, tableStep, viewMode, lotSize, numLots, showLegCurves, priceRangePercent], () => {
+          nextTick(updateChart);
+        }, { deep: true });
+
+        onMounted(() => {
+          targetPrice.value = Math.round(underlyingPrice.value * 1.05);
+          nextTick(initChart);
+        });
+
+        return {
+          currency,
+          viewMode,
+          lotSize,
+          numLots,
+          accountingFormat,
+          underlyingPrice,
+          tableStep,
+          selectedPreset,
+          activeTab,
+          showLegCurves,
+          priceRangePercent,
+          targetPrice,
+          legs,
+          viewModeText,
+          netPremiumPerShare,
+          beps,
+          maxProfitAndLoss,
+          priceBelief,
+          riskProfile,
+          tableData,
+          targetSimulatorResult,
+          formatValue,
+          formatMetricValue,
+          getRowClass,
+          applyPreset,
+          addLeg,
+          removeLeg,
+          resetToDefault,
+          exportCSV
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
